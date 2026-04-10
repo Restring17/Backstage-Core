@@ -45,6 +45,7 @@ El proyecto está diseñado a prueba de fallos de conectividad, permitiendo arra
 └── 📁 data/
     ├── 🗄️ local_db.sqlite     # Base de datos local offline
     └── 🗄️ local_db_bk.sqlite  # Respaldo limpio (Factory Reset)
+```
 ## 🚀 Instalación y Uso (Modo Local / USB)
 
 Para ejecutar este proyecto en cualquier máquina con Windows sin necesidad de configurar entornos virtuales manualmente:
