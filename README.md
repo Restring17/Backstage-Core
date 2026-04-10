@@ -1,4 +1,4 @@
-# 🎸 EventResourceManager (StageSync)
+# 🎸 EventResourceManager (Backstage-Core)
 
 **Sistema de Gestión de Recursos, Inventario y Personal para Eventos Musicales.**
 Proyecto final para el curso de Lenguajes de Programación, desarrollado 100% en Python aplicando los pilares de la Programación Orientada a Objetos (POO).
