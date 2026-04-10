@@ -38,13 +38,24 @@ El proyecto está diseñado a prueba de fallos de conectividad, permitiendo arra
 
 ```text
 📁 codigo_fuente/
-├── 📄 main.py                 # Bootloader y Menú interactivo en terminal
-├── 📄 modelos.py              # Clases POO (Recurso, Reserva, Ambiente, etc.)
-├── 📄 database_manager.py     # Lógica de conexión abstracta (Supabase / SQLite)
-├── 📄 requirements.txt        # Dependencias del proyecto
-└── 📁 data/
-    ├── 🗄️ local_db.sqlite     # Base de datos local offline
-    └── 🗄️ local_db_bk.sqlite  # Respaldo limpio (Factory Reset)
+├── 📄 main.py                 # (El punto de entrada que llama a las vistas)
+│
+├── 📁 models/                 # (El MODELO: solo clases y atributos)
+│   ├── 📄 recurso.py          # Clase padre Recurso, y las hijas Equipo y Personal
+│   ├── 📄 ambiente.py         # Clase Escenario/Auditorio
+│   └── 📄 reserva.py          # Clase que une todo
+│
+├── 📁 services/               # (El CONTROLADOR: la lógica y reglas)
+│   ├── 📄 gestor_reservas.py  # Calcula IGV, maneja los 3 minutos de bloqueo
+│   └── 📄 tarificador.py      # Lógica matemática de cobros
+│
+├── 📁 views/                  # (La VISTA: la interfaz en terminal)
+│   └── 📄 menu_consola.py     # Los prints, inputs y diseño del menú
+│
+└── 📁 database/               # (Capa de persistencia)
+    ├── 📄 db_abstracta.py     # Clase abstracta BaseDeDatos
+    ├── 📄 db_supabase.py      # Conexión real a la nube
+    └── 📄 db_sqlite.py        # Conexión offline al USB
 ```
 ## 🚀 Instalación y Uso (Modo Local / USB)
 
