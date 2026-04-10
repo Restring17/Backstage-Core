@@ -45,3 +45,24 @@ El proyecto está diseñado a prueba de fallos de conectividad, permitiendo arra
 └── 📁 data/
     ├── 🗄️ local_db.sqlite     # Base de datos local offline
     └── 🗄️ local_db_bk.sqlite  # Respaldo limpio (Factory Reset)
+## 🚀 Instalación y Uso (Modo Local / USB)
+
+Para ejecutar este proyecto en cualquier máquina con Windows sin necesidad de configurar entornos virtuales manualmente:
+
+1. Clona este repositorio:
+   ```bash
+   git clone [https://github.com/tu_usuario/EventResourceManager.git](https://github.com/tu_usuario/EventResourceManager.git)
+
+2. Ejecuta el archivo `1_Instalar_Requisitos.bat` para instalar las librerías necesarias (como Supabase).
+
+3. Ejecuta el archivo `2_Iniciar_Sistema.bat` para levantar la interfaz en consola.
+
+4. En el menú de inicio, selecciona tu entorno:
+
+* `[1]` Nube (Supabase - Requiere Internet)
+
+* `[2]` Local (SQLite - Modo Offline)
+
+* `[3]` Restaurar BD Local (Limpiar datos)
+## 🧑‍💻 Autor
+* Adrian Jose Felix Ramirez Rivera `Restring17` - Estudiante de Ingeniería de Sistemas y Software.
