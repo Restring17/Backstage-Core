@@ -1,2 +1,47 @@
-# Backstage-Core
-Sistema Gestion Auditorios en Python
+# 🎸 EventResourceManager (StageSync)
+
+**Sistema de Gestión de Recursos, Inventario y Personal para Eventos Musicales.**
+Proyecto final para el curso de Lenguajes de Programación, desarrollado 100% en Python aplicando los pilares de la Programación Orientada a Objetos (POO).
+
+---
+
+## 📖 Descripción del Proyecto
+
+Las productoras de eventos y festivales enfrentan problemas críticos al gestionar múltiples escenarios simultáneamente. Este sistema backend resuelve la asignación transaccional de recursos finitos: asegura que el inventario físico (instrumentos, consolas, andamios) y el personal técnico especializado no se crucen en el mismo bloque horario.
+
+El sistema simula el motor de reservas interno de un festival, validando disponibilidad en tiempo real, calculando presupuestos dinámicos e impidiendo la sobreasignación de recursos mediante bloqueos de concurrencia.
+
+---
+
+## ✨ Características Principales (Lógica de Negocio)
+
+* **Tarificador Dinámico:** Cálculo automático del costo total de alquiler de equipos y personal, incluyendo el desglose de impuestos (IGV 18%).
+* **Buffer Operativo (Brecha de Tiempo):** El sistema añade automáticamente una brecha de 30 minutos al finalizar cada evento para labores de limpieza y desarme técnico, bloqueando los recursos durante ese periodo.
+* **Control de Concurrencia (Bloqueo de 3 Minutos):** Al iniciar una reserva, los recursos entran en estado `PENDIENTE_PAGO` por 3 minutos. Si no se confirma la transacción, el sistema realiza un *Rollback* automático, liberando el stock.
+* **Arquitectura Dual de Base de Datos:** Soporte nativo para operar en la Nube o de manera Local sin cambiar la lógica del negocio (Patrón Repositorio).
+
+---
+
+## 🛠️ Stack Tecnológico y Paradigma
+
+* **Lenguaje:** Python 3.12+
+* **Paradigma:** Programación Orientada a Objetos (Herencia, Polimorfismo, Abstracción, Encapsulamiento).
+* **Base de Datos (Nube):** Supabase (PostgreSQL) vía `supabase-py`.
+* **Base de Datos (Local):** SQLite (Módulo integrado `sqlite3`).
+* **Entorno de Desarrollo:** VSCode / PyCharm (Fácilmente portable a Google Colab).
+
+---
+
+## 🏗️ Arquitectura del Proyecto
+
+El proyecto está diseñado a prueba de fallos de conectividad, permitiendo arrancar en dos modalidades distintas a través de un Bootloader principal.
+
+```text
+📁 codigo_fuente/
+├── 📄 main.py                 # Bootloader y Menú interactivo en terminal
+├── 📄 modelos.py              # Clases POO (Recurso, Reserva, Ambiente, etc.)
+├── 📄 database_manager.py     # Lógica de conexión abstracta (Supabase / SQLite)
+├── 📄 requirements.txt        # Dependencias del proyecto
+└── 📁 data/
+    ├── 🗄️ local_db.sqlite     # Base de datos local offline
+    └── 🗄️ local_db_bk.sqlite  # Respaldo limpio (Factory Reset)
