@@ -1,0 +1,8 @@
+# Dependencias del Proyecto Backstage-Core
+# Instalar con: pip install -r requirements.txt
+
+# Base de datos en la nube (opcional, solo para modo Supabase)
+supabase==2.4.0
+
+# Utilidades adicionales
+python-dateutil>=2.8.2
