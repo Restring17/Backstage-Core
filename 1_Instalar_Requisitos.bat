@@ -42,6 +42,14 @@ echo.
 
 REM Instala todo dentro del venv, no en el Python global
 .venv\Scripts\python.exe -m pip install --upgrade pip -q
+
+REM Pre-instala pyiceberg con wheel precompilado para evitar compilar C en Windows
+REM (pyiceberg es dependencia transitiva de supabase y requiere MSVC si compila desde fuente)
+.venv\Scripts\python.exe -m pip install --only-binary=:all: pyiceberg 2>nul || (
+    echo ⚠️  Wheel de pyiceberg no disponible para esta versión de Python, intentando sin compilar extensión C...
+    .venv\Scripts\python.exe -m pip install --no-build-isolation pyiceberg
+)
+
 .venv\Scripts\python.exe -m pip install -r codigo_fuente\requirements.txt
 
 if errorlevel 1 (

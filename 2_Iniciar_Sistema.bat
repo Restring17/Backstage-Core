@@ -1,5 +1,7 @@
 @echo off
-REM Iniciador del sistema - Backstage-Core (Windows)
+REM Forzar UTF-8 en la consola y en la salida de Python
+chcp 65001 > nul
+set PYTHONIOENCODING=utf-8
 
 echo.
 echo ╔════════════════════════════════════════════════════════════════╗
