@@ -152,8 +152,7 @@ class GestorReservas:
     # ===== MÉTODOS DE CONFIRMACIÓN =====
     def confirmar_pago_reserva(self, id_reserva: str, monto_pagado: float) -> bool:
         """
-        Confirma el pago de una reserva (resuelve el bloqueo de 3 minutos).
-        This is the critical transactional point.
+        Confirma el pago de una reserva pendiente.
 
         Args:
             id_reserva: ID de la reserva

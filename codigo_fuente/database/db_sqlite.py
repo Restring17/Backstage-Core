@@ -7,7 +7,7 @@ import sqlite3
 import os
 import json
 from typing import List, Optional, Dict, Any
-from database.db_abstracta import BaseDatos
+from .db_abstracta import BaseDatos
 
 
 class DBSQLite(BaseDatos):

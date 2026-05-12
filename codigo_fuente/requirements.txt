@@ -1,8 +1,12 @@
 # Dependencias del Proyecto Backstage-Core
-# Instalar con: pip install -r requirements.txt
 
-# Base de datos en la nube (opcional, solo para modo Supabase)
-supabase==2.4.0
+# Supabase (modo nube) — necesita >=2.15.0 para funcionar con Python 3.13+
+supabase>=2.15.0
+# websockets lo necesita el módulo realtime de supabase
+websockets>=13.0
 
-# Utilidades adicionales
+# Variables de entorno (.env)
+python-dotenv>=1.0.0
+
+# Utilidades de fechas
 python-dateutil>=2.8.2

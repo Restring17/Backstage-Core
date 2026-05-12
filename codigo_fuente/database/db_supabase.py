@@ -1,53 +1,53 @@
 """
-Módulo de Base de Datos Supabase: Implementación en la nube
+Base de datos Supabase — conexión a PostgreSQL en la nube.
 Empresa: Backstage-Core
-Nota: Requiere configuración de SUPABASE_URL y SUPABASE_KEY en variables de entorno
 """
 
 import os
 from typing import List, Optional, Dict, Any
-from database.db_abstracta import BaseDatos
+from .db_abstracta import BaseDatos
 
 
 class DBSupabase(BaseDatos):
     """
-    Implementación de persistencia usando Supabase (PostgreSQL en la nube).
-    
-    Nota: Esta es una implementación mock para demostración.
-    En producción, instala: pip install supabase
+    Persistencia usando Supabase (PostgreSQL).
+    Necesita SUPABASE_URL y SUPABASE_KEY en el .env antes de iniciar.
     """
 
     def __init__(self):
         """Inicializa la conexión a Supabase."""
         self._conectado = False
-        self._supabase_url = os.getenv("SUPABASE_URL", "https://ejemplo.supabase.co")
-        self._supabase_key = os.getenv("SUPABASE_KEY", "xxxxxxxxxxxxxxx")
+        self._supabase_url = os.getenv("SUPABASE_URL", "")
+        self._supabase_key = os.getenv("SUPABASE_KEY", "")
         self._client = None
-        # En producción: from supabase import create_client
-        # self._client = create_client(self._supabase_url, self._supabase_key)
+
+        if not self._supabase_url or not self._supabase_key:
+            print("⚠️  Variables SUPABASE_URL y/o SUPABASE_KEY no configuradas.")
+            print("   Copia .env.example como .env y añade tus credenciales.")
+            return
+
+        try:
+            from supabase import create_client
+            self._client = create_client(self._supabase_url, self._supabase_key)
+        except ImportError:
+            print("⚠️  El paquete 'supabase' no está instalado.")
+            print("   Ejecuta: pip install supabase")
 
     def conectar(self) -> bool:
-        """
-        Establece conexión con Supabase.
-        
-        Returns:
-            True si la conexión fue exitosa
-        """
+        """Prueba la conexión haciendo un SELECT rápido. Retorna True si responde."""
+        if not self._client:
+            print("❌ Error: Cliente de Supabase no inicializado.")
+            print("   Revisa que SUPABASE_URL y SUPABASE_KEY estén configuradas en .env")
+            return False
+
         try:
-            # En producción, aquí va la lógica real de conexión
-            # self._client = create_client(self._supabase_url, self._supabase_key)
-            # response = self._client.auth.get_session()
-            
-            # Para esta demostración, simulamos la conexión
-            if not self._supabase_url.startswith("https://"):
-                print("❌ Error: Credenciales de Supabase no configuradas")
-                return False
-            
+            self._client.table("ambientes").select("id_ambiente").limit(1).execute()
             self._conectado = True
             print("✅ Conectado a Supabase (NUBE)")
             return True
         except Exception as e:
             print(f"❌ Error de conexión a Supabase: {e}")
+            print("   Verifica que el esquema SQL esté importado y las credenciales sean válidas.")
             self._conectado = False
             return False
 
@@ -67,10 +67,9 @@ class DBSupabase(BaseDatos):
         if not self._conectado:
             print("❌ No conectado a Supabase")
             return False
-        
+
         try:
-            # En producción:
-            # response = self._client.table("recursos").insert(recurso).execute()
+            self._client.table("recursos").upsert(recurso).execute()
             print(f"✅ Recurso {recurso.get('id_recurso')} guardado en Supabase")
             return True
         except Exception as e:
@@ -81,52 +80,50 @@ class DBSupabase(BaseDatos):
         """Obtiene un recurso por ID."""
         if not self._conectado:
             return None
-        
+
         try:
-            # En producción:
-            # response = self._client.table("recursos").select("*").eq("id_recurso", id_recurso).execute()
-            # return response.data[0] if response.data else None
-            return None
-        except Exception:
+            response = self._client.table("recursos").select("*").eq("id_recurso", id_recurso).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"❌ Error al obtener recurso: {e}")
             return None
 
     def obtener_todos_recursos(self) -> List[Dict[str, Any]]:
         """Obtiene todos los recursos."""
         if not self._conectado:
             return []
-        
+
         try:
-            # En producción:
-            # response = self._client.table("recursos").select("*").execute()
-            # return response.data
-            return []
-        except Exception:
+            response = self._client.table("recursos").select("*").execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"❌ Error al obtener recursos: {e}")
             return []
 
     def actualizar_recurso(self, id_recurso: str, datos: Dict[str, Any]) -> bool:
         """Actualiza un recurso."""
         if not self._conectado:
             return False
-        
+
         try:
-            # En producción:
-            # self._client.table("recursos").update(datos).eq("id_recurso", id_recurso).execute()
+            self._client.table("recursos").update(datos).eq("id_recurso", id_recurso).execute()
             print(f"✅ Recurso {id_recurso} actualizado en Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al actualizar recurso: {e}")
             return False
 
     def eliminar_recurso(self, id_recurso: str) -> bool:
         """Elimina un recurso."""
         if not self._conectado:
             return False
-        
+
         try:
-            # En producción:
-            # self._client.table("recursos").delete().eq("id_recurso", id_recurso).execute()
+            self._client.table("recursos").delete().eq("id_recurso", id_recurso).execute()
             print(f"✅ Recurso {id_recurso} eliminado de Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al eliminar recurso: {e}")
             return False
 
     # ===== AMBIENTES =====
@@ -135,34 +132,45 @@ class DBSupabase(BaseDatos):
         if not self._conectado:
             return False
         try:
-            # En producción: self._client.table("ambientes").insert(ambiente).execute()
+            self._client.table("ambientes").upsert(ambiente).execute()
             print(f"✅ Ambiente {ambiente.get('id_ambiente')} guardado en Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al guardar ambiente: {e}")
             return False
 
     def obtener_ambiente(self, id_ambiente: str) -> Optional[Dict[str, Any]]:
         """Obtiene un ambiente."""
         if not self._conectado:
             return None
-        # En producción: implementar consulta
-        return None
+        try:
+            response = self._client.table("ambientes").select("*").eq("id_ambiente", id_ambiente).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"❌ Error al obtener ambiente: {e}")
+            return None
 
     def obtener_todos_ambientes(self) -> List[Dict[str, Any]]:
         """Obtiene todos los ambientes."""
         if not self._conectado:
             return []
-        # En producción: implementar consulta
-        return []
+        try:
+            response = self._client.table("ambientes").select("*").execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"❌ Error al obtener ambientes: {e}")
+            return []
 
     def actualizar_ambiente(self, id_ambiente: str, datos: Dict[str, Any]) -> bool:
         """Actualiza un ambiente."""
         if not self._conectado:
             return False
         try:
+            self._client.table("ambientes").update(datos).eq("id_ambiente", id_ambiente).execute()
             print(f"✅ Ambiente {id_ambiente} actualizado en Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al actualizar ambiente: {e}")
             return False
 
     def eliminar_ambiente(self, id_ambiente: str) -> bool:
@@ -170,49 +178,87 @@ class DBSupabase(BaseDatos):
         if not self._conectado:
             return False
         try:
+            self._client.table("ambientes").delete().eq("id_ambiente", id_ambiente).execute()
             print(f"✅ Ambiente {id_ambiente} eliminado de Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al eliminar ambiente: {e}")
             return False
 
     # ===== RESERVAS =====
     def guardar_reserva(self, reserva: Dict[str, Any]) -> bool:
-        """Guarda una reserva."""
+        """
+        Llama al RPC guardar_reserva_con_recursos para guardar reserva y recursos juntos.
+        Copia el dict recibido para no modificar el original.
+        """
         if not self._conectado:
             return False
         try:
-            # En producción: self._client.table("reservas").insert(reserva).execute()
-            print(f"✅ Reserva {reserva.get('id_reserva')} guardada en Supabase")
+            reserva_data = dict(reserva)
+            recursos_detalle = reserva_data.pop("recursos_detalle", [])
+
+            # datetime → ISO string para que PostgreSQL lo acepte
+            for campo_fecha in ("hora_inicio", "hora_fin"):
+                if campo_fecha in reserva_data and hasattr(reserva_data[campo_fecha], "isoformat"):
+                    reserva_data[campo_fecha] = reserva_data[campo_fecha].isoformat()
+
+            self._client.rpc(
+                "guardar_reserva_con_recursos",
+                {
+                    "p_reserva":  reserva_data,
+                    "p_recursos": recursos_detalle,
+                }
+            ).execute()
+
+            print(f"✅ Reserva {reserva_data.get('id_reserva')} guardada en Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al guardar reserva: {e}")
             return False
 
     def obtener_reserva(self, id_reserva: str) -> Optional[Dict[str, Any]]:
         """Obtiene una reserva."""
         if not self._conectado:
             return None
-        return None
+        try:
+            response = self._client.table("reservas").select("*").eq("id_reserva", id_reserva).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"❌ Error al obtener reserva: {e}")
+            return None
 
     def obtener_todas_reservas(self) -> List[Dict[str, Any]]:
         """Obtiene todas las reservas."""
         if not self._conectado:
             return []
-        return []
+        try:
+            response = self._client.table("reservas").select("*").order("fecha_creacion", desc=True).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"❌ Error al obtener reservas: {e}")
+            return []
 
     def obtener_reservas_por_estado(self, estado: str) -> List[Dict[str, Any]]:
         """Obtiene reservas por estado."""
         if not self._conectado:
             return []
-        return []
+        try:
+            response = self._client.table("reservas").select("*").eq("estado", estado).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"❌ Error al obtener reservas por estado: {e}")
+            return []
 
     def actualizar_reserva(self, id_reserva: str, datos: Dict[str, Any]) -> bool:
         """Actualiza una reserva."""
         if not self._conectado:
             return False
         try:
+            self._client.table("reservas").update(datos).eq("id_reserva", id_reserva).execute()
             print(f"✅ Reserva {id_reserva} actualizada en Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al actualizar reserva: {e}")
             return False
 
     def eliminar_reserva(self, id_reserva: str) -> bool:
@@ -220,47 +266,46 @@ class DBSupabase(BaseDatos):
         if not self._conectado:
             return False
         try:
+            self._client.table("reservas").delete().eq("id_reserva", id_reserva).execute()
             print(f"✅ Reserva {id_reserva} eliminada de Supabase")
             return True
-        except Exception:
+        except Exception as e:
+            print(f"❌ Error al eliminar reserva: {e}")
             return False
 
     # ===== TRANSACCIONES =====
+    # Supabase no expone BEGIN/COMMIT desde el cliente Python — cada operación es autocommit.
+    # Los rollbacks reales van por funciones RPC en PostgreSQL (ver guardar_reserva_con_recursos).
     def iniciar_transaccion(self) -> bool:
-        """Inicia una transacción."""
         if not self._conectado:
             return False
-        print("✅ Transacción iniciada en Supabase")
         return True
 
     def confirmar_transaccion(self) -> bool:
-        """Confirma una transacción (COMMIT)."""
         if not self._conectado:
             return False
-        print("✅ Transacción confirmada en Supabase")
         return True
 
     def revertir_transaccion(self) -> bool:
-        """Revierte una transacción (ROLLBACK)."""
+        # No hay forma de hacer ROLLBACK desde el SDK; el RPC de PostgreSQL lo maneja internamente.
         if not self._conectado:
             return False
-        print("✅ Transacción revertida en Supabase")
-        return True
+        print("⚠️  Rollback no disponible desde el cliente. Revisa el estado en el panel de Supabase.")
+        return False
 
     # ===== UTILIDAD =====
     def limpiar_datos_test(self) -> bool:
-        """
-        La limpieza de datos en Supabase es peligrosa, así que la deshabilitamos.
-        """
-        print("⚠️  Limpieza de datos deshabilitada en Supabase (NUBE)")
+        # Deshabilitado en nube — borrar directo desde el panel de Supabase
+        print("⚠️  Limpieza deshabilitada en modo nube. Usa el panel de Supabase.")
         return False
 
     def obtener_informacion_conexion(self) -> Dict[str, str]:
         """Obtiene información de la conexión."""
+        url_display = self._supabase_url if self._supabase_url else "(no configurada)"
         return {
             "tipo": "Supabase (PostgreSQL en la Nube)",
-            "url": self._supabase_url,
-            "estado": "Conectado" if self._conectado else "Desconectado",
+            "url": url_display,
+            "estado": "Conectado ✅" if self._conectado else "Desconectado ❌",
             "modo": "NUBE - ONLINE",
         }
 
