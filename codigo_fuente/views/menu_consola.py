@@ -89,7 +89,7 @@ class MenuConsola:
     def _inicializar_sistema(self) -> None:
         """Inicializa los servicios del sistema."""
         self._tarificador = Tarificador()
-        self._gestor_reservas = GestorReservas(self._tarificador)
+        self._gestor_reservas = GestorReservas(self._tarificador, self._base_datos)
 
     def _cargar_datos_demo(self) -> None:
         """Carga datos de demostración (solo para SQLite)."""
@@ -431,12 +431,19 @@ class MenuConsola:
 
         if self._gestor_reservas.confirmar_pago_reserva(id_reserva, monto_ingresado):
             print("✅ Pago confirmado. Reserva activada.")
-            # [CORRECCIÓN] Uso del Enum en lugar de Magic String
             if self._base_datos:
                 try:
+                    reserva = self._gestor_reservas.obtener_reserva(id_reserva)
                     self._base_datos.actualizar_reserva(id_reserva, {"estado": EstadoReserva.CONFIRMADA.value})
+                    if reserva:
+                        self._base_datos.registrar_movimiento_caja({
+                            "id_reserva":  id_reserva,
+                            "tipo":        "INGRESO",
+                            "monto":       reserva.monto_total_con_igv,
+                            "descripcion": f"Pago confirmado - {reserva.nombre_banda}",
+                        })
                 except Exception as e:
-                     print(f"⚠️ Aviso: Se actualizó en memoria, pero falló la BD ({e})")
+                    print(f"⚠️ Aviso: Se actualizó en memoria, pero falló la BD ({e})")
         else:
             print("❌ Error al confirmar pago")
 
@@ -447,15 +454,7 @@ class MenuConsola:
         razon = input("Razón de cancelación: ").strip()
 
         exito, mensaje = self._gestor_reservas.cancelar_reserva(id_reserva, razon)
-        
-        if exito:
-            # [CORRECCIÓN] Uso del Enum en lugar de Magic String
-            if self._base_datos:
-                try:
-                    self._base_datos.actualizar_reserva(id_reserva, {"estado": EstadoReserva.CANCELADA.value})
-                except Exception as e:
-                    print(f"⚠️ Aviso: Se canceló en memoria, pero falló la actualización en BD ({e})")
-        else:
+        if not exito:
             print(f"❌ Fallo al cancelar: {mensaje}")
 
     def _gestionar_mantenimiento(self) -> None:
@@ -484,14 +483,45 @@ class MenuConsola:
             print(f"   Ingresos potenciales: S/.{reporte['ingresos_potenciales']:.2f}")
 
     def _reporte_ingresos(self) -> None:
-        """Muestra reporte de ingresos."""
+        """Muestra reporte de ingresos desde el histórico completo de la BD."""
         print("\n💰 Reporte de Ingresos")
+
+        # resumen en memoria (sesión actual)
         reporte = self._gestor_reservas.generar_reporte_ingresos()
+        print(f"\n  [Sesión actual]")
         print(f"   Reservas confirmadas: {reporte['total_reservas_confirmadas']}")
-        print(f"   Subtotal (sin IGV): S/.{reporte['subtotal_sin_igv']:.2f}")
-        print(f"   IGV 18%: S/.{reporte['total_igv_18']:.2f}")
-        print(f"   Total: S/.{reporte['total_con_igv']:.2f}")
-        print(f"   Promedio/reserva: S/.{reporte['promedio_por_reserva']:.2f}")
+        print(f"   Subtotal (sin IGV):   S/.{reporte['subtotal_sin_igv']:.2f}")
+        print(f"   IGV 18%:              S/.{reporte['total_igv_18']:.2f}")
+        print(f"   Total:                S/.{reporte['total_con_igv']:.2f}")
+
+        # histórico desde la BD
+        if not self._base_datos:
+            return
+
+        movimientos = self._base_datos.obtener_movimientos_caja()
+        if not movimientos:
+            print("\n  [Histórico BD] Sin movimientos registrados aún.")
+            return
+
+        ingresos   = [m for m in movimientos if m["tipo"] == "INGRESO"]
+        penalidades = [m for m in movimientos if m["tipo"] == "PENALIDAD"]
+        timeouts   = [m for m in movimientos if m["tipo"] == "TIMEOUT"]
+
+        total_ingresos   = sum(m["monto"] for m in ingresos)
+        total_penalidades = sum(m["monto"] for m in penalidades)
+
+        print(f"\n  [Histórico BD - todos los periodos]")
+        print(f"   Ingresos por reservas:    {len(ingresos)} confirmadas  →  S/.{total_ingresos:.2f}")
+        print(f"   Penalidades cobradas:     {len(penalidades)} cancelaciones  →  S/.{total_penalidades:.2f}")
+        print(f"   Reservas caidas/timeout:  {len(timeouts)}")
+        print(f"   ─────────────────────────────────────────")
+        print(f"   TOTAL INGRESOS REALES:    S/.{total_ingresos + total_penalidades:.2f}")
+
+        if movimientos:
+            print(f"\n  [Últimos 5 movimientos]")
+            for m in movimientos[:5]:
+                fecha = str(m.get("fecha", ""))[:16]
+                print(f"   {fecha}  {m['tipo']:<12}  S/.{m['monto']:>10.2f}  {m.get('descripcion','')[:40]}")
 
     def _listar_recursos(self) -> None:
         """Lista todos los recursos disponibles."""

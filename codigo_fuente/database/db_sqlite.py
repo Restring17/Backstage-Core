@@ -30,12 +30,21 @@ class DBSQLite(BaseDatos):
         self._crear_tablas_si_no_existen()
 
     def _crear_tablas_si_no_existen(self) -> None:
-        """Crea las tablas necesarias si no existen."""
-        try:
+        """Crea las tablas necesarias. Usa self._conexion si está abierta."""
+        # si ya hay conexión activa (llamada desde conectar()), la usamos directamente
+        if self._conexion:
+            conn = self._conexion
+            cursor = self._conexion.cursor()
+            owns_conn = False
+        else:
+            # llamada desde __init__ antes de conectar() — solo para archivos .db
+            if self._ruta_db == ":memory:":
+                return  # no tiene sentido crear tablas en una conexión temporal de :memory:
             conn = sqlite3.connect(self._ruta_db)
             cursor = conn.cursor()
+            owns_conn = True
 
-            # Tabla de recursos
+        try:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS recursos (
                     id_recurso TEXT PRIMARY KEY,
@@ -54,7 +63,6 @@ class DBSQLite(BaseDatos):
                 )
             """)
 
-            # Tabla de ambientes
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ambientes (
                     id_ambiente TEXT PRIMARY KEY,
@@ -70,43 +78,55 @@ class DBSQLite(BaseDatos):
                 )
             """)
 
-            # Tabla de reservas
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reservas (
-                    id_reserva TEXT PRIMARY KEY,
-                    id_ambiente TEXT NOT NULL,
-                    nombre_banda TEXT NOT NULL,
-                    manager_contacto TEXT,
-                    hora_inicio TIMESTAMP NOT NULL,
-                    hora_fin TIMESTAMP NOT NULL,
-                    estado TEXT NOT NULL,
-                    monto_sin_igv REAL,
-                    monto_igv REAL,
-                    monto_total REAL,
-                    recursos_json TEXT,
-                    datos_json TEXT,
-                    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    id_reserva            TEXT PRIMARY KEY,
+                    id_ambiente           TEXT NOT NULL,
+                    nombre_banda          TEXT NOT NULL,
+                    manager_contacto      TEXT,
+                    hora_inicio           TIMESTAMP NOT NULL,
+                    hora_fin              TIMESTAMP NOT NULL,
+                    estado                TEXT NOT NULL,
+                    monto_sin_igv         REAL,
+                    monto_igv             REAL,
+                    monto_total           REAL,
+                    monto_penalidad       REAL DEFAULT 0,
+                    porcentaje_penalidad  REAL DEFAULT 0,
+                    razon_cancelacion     TEXT,
+                    fecha_cancelacion     TIMESTAMP,
+                    recursos_json         TEXT,
+                    datos_json            TEXT,
+                    fecha_creacion        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (id_ambiente) REFERENCES ambientes(id_ambiente)
                 )
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS movimientos_caja (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_reserva  TEXT REFERENCES reservas(id_reserva) ON DELETE SET NULL,
+                    tipo        TEXT NOT NULL,
+                    monto       REAL NOT NULL DEFAULT 0,
+                    descripcion TEXT,
+                    fecha       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             conn.commit()
-            conn.close()
+            if owns_conn:
+                conn.close()
         except Exception as e:
             print(f"❌ Error al crear tablas: {e}")
 
     def conectar(self) -> bool:
-        """
-        Establece conexión con SQLite.
-
-        Returns:
-            True si la conexión fue exitosa
-        """
+        """Establece conexión con SQLite."""
         try:
             self._conexion = sqlite3.connect(self._ruta_db)
             self._conexion.row_factory = sqlite3.Row
             self._cursor = self._conexion.cursor()
             self._conectado = True
+            # asegura que las tablas existen en esta conexión
+            self._crear_tablas_si_no_existen()
             print(f"✅ Conectado a SQLite (LOCAL): {self._ruta_db}")
             return True
         except Exception as e:
@@ -434,6 +454,43 @@ class DBSQLite(BaseDatos):
             "estado": "Conectado" if self._conectado else "Desconectado",
             "modo": "LOCAL - OFFLINE",
         }
+
+    # ===== CAJA / AUDITORÍA FINANCIERA =====
+    def registrar_movimiento_caja(self, datos: Dict[str, Any]) -> bool:
+        """Inserta un movimiento en movimientos_caja."""
+        if not self._conectado or not self._cursor:
+            return False
+        try:
+            self._cursor.execute("""
+                INSERT INTO movimientos_caja (id_reserva, tipo, monto, descripcion)
+                VALUES (?, ?, ?, ?)
+            """, (
+                datos.get("id_reserva"),
+                datos.get("tipo"),
+                datos.get("monto", 0),
+                datos.get("descripcion", ""),
+            ))
+            self._conexion.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error al registrar movimiento de caja: {e}")
+            return False
+
+    def obtener_movimientos_caja(self) -> List[Dict[str, Any]]:
+        """Devuelve el histórico completo de movimientos de caja."""
+        if not self._conectado or not self._cursor:
+            return []
+        try:
+            self._cursor.execute("""
+                SELECT id, id_reserva, tipo, monto, descripcion, fecha
+                FROM movimientos_caja
+                ORDER BY fecha DESC
+            """)
+            cols = ["id", "id_reserva", "tipo", "monto", "descripcion", "fecha"]
+            return [dict(zip(cols, row)) for row in self._cursor.fetchall()]
+        except Exception as e:
+            print(f"❌ Error al obtener movimientos de caja: {e}")
+            return []
 
     def __repr__(self) -> str:
         return (

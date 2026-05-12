@@ -299,6 +299,39 @@ class DBSupabase(BaseDatos):
         print("⚠️  Limpieza deshabilitada en modo nube. Usa el panel de Supabase.")
         return False
 
+    # ===== CAJA / AUDITORÍA FINANCIERA =====
+    def registrar_movimiento_caja(self, datos: Dict[str, Any]) -> bool:
+        """Inserta un movimiento en movimientos_caja."""
+        if not self._conectado:
+            return False
+        try:
+            self._client.table("movimientos_caja").insert({
+                "id_reserva":  datos.get("id_reserva"),
+                "tipo":        datos.get("tipo"),
+                "monto":       datos.get("monto", 0),
+                "descripcion": datos.get("descripcion", ""),
+            }).execute()
+            return True
+        except Exception as e:
+            print(f"❌ Error al registrar movimiento de caja: {e}")
+            return False
+
+    def obtener_movimientos_caja(self) -> List[Dict[str, Any]]:
+        """Devuelve el histórico completo de movimientos de caja."""
+        if not self._conectado:
+            return []
+        try:
+            response = (
+                self._client.table("movimientos_caja")
+                .select("*")
+                .order("fecha", desc=True)
+                .execute()
+            )
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"❌ Error al obtener movimientos de caja: {e}")
+            return []
+
     def obtener_informacion_conexion(self) -> Dict[str, str]:
         """Obtiene información de la conexión."""
         url_display = self._supabase_url if self._supabase_url else "(no configurada)"
