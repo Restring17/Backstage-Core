@@ -7,8 +7,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 from models import Recurso, EquipoFisico, PersonalTecnico, Ambiente, ReservaEscenario
-# Se asume que EstadoReserva está en models y se importa para usar los Enums en BD
-from models.reserva import EstadoReserva 
+from models.reserva import EstadoReserva
 from services import Tarificador, GestorReservas
 from database import BaseDatos, DBSQLite, DBSupabase
 
@@ -65,10 +64,11 @@ class MenuConsola:
                     self._base_datos = DBSupabase()
                     if self._base_datos.conectar():
                         self._inicializar_sistema()
+                        self._cargar_datos_supabase()
                         return True
                     else:
                         print("❌ Error: No se pudo conectar a Supabase. ¿Credenciales configuradas?")
-                        print("   (Asegúrate de establecer SUPABASE_URL y SUPABASE_KEY en variables de entorno)")
+                        print("   (Asegúrate de establecer SUPABASE_URL y SUPABASE_KEY en el archivo .env)")
                         input("Presiona Enter para intentar de nuevo...")
 
                 case "2":
@@ -89,7 +89,7 @@ class MenuConsola:
     def _inicializar_sistema(self) -> None:
         """Inicializa los servicios del sistema."""
         self._tarificador = Tarificador()
-        self._gestor_reservas = GestorReservas(self._tarificador)
+        self._gestor_reservas = GestorReservas(self._tarificador, self._base_datos)
 
     def _cargar_datos_demo(self) -> None:
         """Carga datos de demostración (solo para SQLite)."""
@@ -161,6 +161,63 @@ class MenuConsola:
         print("✅ Datos de demostración cargados")
         print(f"   • {len(self._ambientes_catalogo)} ambientes")
         print(f"   • {len(self._recursos_catalogo)} recursos")
+
+    def _cargar_datos_supabase(self) -> None:
+        """Carga ambientes y recursos desde Supabase para uso en el menú."""
+        print("\n☁️  Cargando datos desde Supabase...")
+        try:
+            # --- Ambientes ---
+            ambientes_data = self._base_datos.obtener_todos_ambientes()
+            for amb_dict in ambientes_data:
+                ambiente = Ambiente(
+                    id_ambiente=amb_dict.get("id_ambiente", ""),
+                    nombre=amb_dict.get("nombre", "Sin nombre"),
+                    capacidad_personas=amb_dict.get("capacidad_personas", 0) or 0,
+                    precio_alquiler_hora=float(amb_dict.get("precio_alquiler_hora", 0)),
+                    requiere_sonido=bool(amb_dict.get("requiere_sonido", False)),
+                    requiere_luces=bool(amb_dict.get("requiere_luces", False)),
+                    requiere_andamios=bool(amb_dict.get("requiere_andamios", False)),
+                )
+                self._ambientes_catalogo[ambiente.id_ambiente] = ambiente
+
+            # --- Recursos (equipos y personal) ---
+            recursos_data = self._base_datos.obtener_todos_recursos()
+            for rec_dict in recursos_data:
+                tipo = rec_dict.get("tipo", "")
+                id_rec = rec_dict.get("id_recurso", "")
+                nombre = rec_dict.get("nombre", "Sin nombre")
+                precio = float(rec_dict.get("precio_base_hora", 0))
+
+                if tipo == "EQUIPO_FISICO":
+                    recurso = EquipoFisico(
+                        id_recurso=id_rec,
+                        nombre=nombre,
+                        precio_base_hora=precio,
+                        categoria=rec_dict.get("categoria", "General"),
+                        marca=rec_dict.get("marca", "Genérico"),
+                        requiere_conexion_electrica=bool(rec_dict.get("requiere_electricidad", False)),
+                        peso_kg=float(rec_dict.get("peso_kg", 0) or 0),
+                    )
+                    self._recursos_catalogo[id_rec] = recurso
+                elif tipo == "PERSONAL_TECNICO":
+                    recurso = PersonalTecnico(
+                        id_recurso=id_rec,
+                        nombre=nombre,
+                        precio_base_hora=precio,
+                        especialidad=rec_dict.get("especialidad", "General"),
+                        años_experiencia=int(rec_dict.get("anos_experiencia", 0) or 0),
+                    )
+                    self._recursos_catalogo[id_rec] = recurso
+
+            if self._ambientes_catalogo or self._recursos_catalogo:
+                print(f"✅ Datos cargados desde Supabase:")
+                print(f"   • {len(self._ambientes_catalogo)} ambientes")
+                print(f"   • {len(self._recursos_catalogo)} recursos")
+            else:
+                print("⚠️  No se encontraron datos en Supabase.")
+                print("   Importa el esquema SQL (supabase_schema.sql) y carga datos de prueba desde el panel web.")
+        except Exception as e:
+            print(f"❌ Error al cargar datos desde Supabase: {e}")
 
     def mostrar_menu_principal(self) -> None:
         """Muestra el menú principal."""
@@ -250,21 +307,31 @@ class MenuConsola:
         try:
             fecha_str = input("Fecha de inicio (DD/MM/YYYY): ").strip()
             hora_str = input("Hora de inicio (HH:MM): ").strip()
-            
+
             dia, mes, año = map(int, fecha_str.split("/"))
+
+            # acepta "26" o "2026"
+            if año <= 99:
+                año += 2000
+
             hora_h, hora_m = map(int, hora_str.split(":"))
-            
+
             hora_inicio = datetime(año, mes, dia, hora_h, hora_m, 0)
-            
+
             # Valida que la hora sea en el futuro
             if hora_inicio <= datetime.now():
-                print("❌ Error: La hora debe ser en el futuro")
+                print(f"❌ Error: La fecha/hora {hora_inicio.strftime('%d/%m/%Y %H:%M')} ya pasó.")
+                print(f"   La fecha debe ser posterior a {datetime.now().strftime('%d/%m/%Y %H:%M')}")
                 return
 
             duracion_minutos = int(input("Duración en minutos: ").strip())
+            if duracion_minutos <= 0:
+                print("❌ Error: La duración debe ser mayor a 0 minutos")
+                return
             hora_fin = hora_inicio + timedelta(minutes=duracion_minutos)
-        except ValueError:
-            print("❌ Formato de hora no válido")
+        except ValueError as e:
+            print(f"❌ Formato no válido: {e}")
+            print("   Usa DD/MM/YYYY para la fecha (ej: 15/06/2026) y HH:MM para la hora (ej: 20:00)")
             return
 
         # Selecciona recursos
@@ -297,7 +364,6 @@ class MenuConsola:
             print(f"\n✅ Reserva creada: {reserva.id_reserva}")
             print(f"   Estado: {reserva.estado.value}")
             print(f"   Monto a pagar: S/.{reserva.monto_total_con_igv:.2f}")
-            # [NUEVO] Reflejamos el cambio de Minutos a Horas en la UI
             print(f"   ⏱️  Tienes {reserva.TIMEOUT_PAGO_HORAS} horas para confirmar el pago")
 
             # Muestra factura
@@ -308,11 +374,9 @@ class MenuConsola:
             )
             print(factura)
             
-            # [CORRECCIÓN] En lugar de acceder a la BD directo aquí, 
-            # el GestorReservas debería hacerlo internamente. Pero para 
-            # mantener la estructura actual, usamos el Enum y try/except.
             if self._base_datos:
                 try:
+                    recursos_bd = [{"id_recurso": r.id_recurso, "precio_aplicado": r.precio_base_hora} for r in recursos]
                     self._base_datos.guardar_reserva({
                         "id_reserva": reserva.id_reserva,
                         "id_ambiente": ambiente.id_ambiente,
@@ -320,13 +384,14 @@ class MenuConsola:
                         "manager_contacto": manager,
                         "hora_inicio": reserva.hora_inicio.isoformat(),
                         "hora_fin": reserva.hora_fin.isoformat(),
-                        "estado": reserva.estado.value, # Se mantiene el uso de value del Enum
+                        "estado": reserva.estado.value,
                         "monto_sin_igv": reserva.monto_sin_igv,
                         "monto_igv": reserva.monto_igv,
-                        "monto_total": reserva.monto_total_con_igv
-                    })        
+                        "monto_total": reserva.monto_total_con_igv,
+                        "recursos_detalle": recursos_bd
+                    })
                 except Exception as e:
-                    print(f"⚠️ Aviso: La reserva se creó en memoria, pero no se guardó en BD ({e})")
+                    print(f"⚠️ La reserva se creó en memoria pero no se guardó en BD ({e})")
 
     def _consultar_reserva(self) -> None:
         """Consulta el estado de una reserva."""
@@ -366,12 +431,19 @@ class MenuConsola:
 
         if self._gestor_reservas.confirmar_pago_reserva(id_reserva, monto_ingresado):
             print("✅ Pago confirmado. Reserva activada.")
-            # [CORRECCIÓN] Uso del Enum en lugar de Magic String
             if self._base_datos:
                 try:
+                    reserva = self._gestor_reservas.obtener_reserva(id_reserva)
                     self._base_datos.actualizar_reserva(id_reserva, {"estado": EstadoReserva.CONFIRMADA.value})
+                    if reserva:
+                        self._base_datos.registrar_movimiento_caja({
+                            "id_reserva":  id_reserva,
+                            "tipo":        "INGRESO",
+                            "monto":       reserva.monto_total_con_igv,
+                            "descripcion": f"Pago confirmado - {reserva.nombre_banda}",
+                        })
                 except Exception as e:
-                     print(f"⚠️ Aviso: Se actualizó en memoria, pero falló la BD ({e})")
+                    print(f"⚠️ Aviso: Se actualizó en memoria, pero falló la BD ({e})")
         else:
             print("❌ Error al confirmar pago")
 
@@ -382,15 +454,7 @@ class MenuConsola:
         razon = input("Razón de cancelación: ").strip()
 
         exito, mensaje = self._gestor_reservas.cancelar_reserva(id_reserva, razon)
-        
-        if exito:
-            # [CORRECCIÓN] Uso del Enum en lugar de Magic String
-            if self._base_datos:
-                try:
-                    self._base_datos.actualizar_reserva(id_reserva, {"estado": EstadoReserva.CANCELADA.value})
-                except Exception as e:
-                    print(f"⚠️ Aviso: Se canceló en memoria, pero falló la actualización en BD ({e})")
-        else:
+        if not exito:
             print(f"❌ Fallo al cancelar: {mensaje}")
 
     def _gestionar_mantenimiento(self) -> None:
@@ -419,14 +483,45 @@ class MenuConsola:
             print(f"   Ingresos potenciales: S/.{reporte['ingresos_potenciales']:.2f}")
 
     def _reporte_ingresos(self) -> None:
-        """Muestra reporte de ingresos."""
+        """Muestra reporte de ingresos desde el histórico completo de la BD."""
         print("\n💰 Reporte de Ingresos")
+
+        # resumen en memoria (sesión actual)
         reporte = self._gestor_reservas.generar_reporte_ingresos()
+        print(f"\n  [Sesión actual]")
         print(f"   Reservas confirmadas: {reporte['total_reservas_confirmadas']}")
-        print(f"   Subtotal (sin IGV): S/.{reporte['subtotal_sin_igv']:.2f}")
-        print(f"   IGV 18%: S/.{reporte['total_igv_18']:.2f}")
-        print(f"   Total: S/.{reporte['total_con_igv']:.2f}")
-        print(f"   Promedio/reserva: S/.{reporte['promedio_por_reserva']:.2f}")
+        print(f"   Subtotal (sin IGV):   S/.{reporte['subtotal_sin_igv']:.2f}")
+        print(f"   IGV 18%:              S/.{reporte['total_igv_18']:.2f}")
+        print(f"   Total:                S/.{reporte['total_con_igv']:.2f}")
+
+        # histórico desde la BD
+        if not self._base_datos:
+            return
+
+        movimientos = self._base_datos.obtener_movimientos_caja()
+        if not movimientos:
+            print("\n  [Histórico BD] Sin movimientos registrados aún.")
+            return
+
+        ingresos   = [m for m in movimientos if m["tipo"] == "INGRESO"]
+        penalidades = [m for m in movimientos if m["tipo"] == "PENALIDAD"]
+        timeouts   = [m for m in movimientos if m["tipo"] == "TIMEOUT"]
+
+        total_ingresos   = sum(m["monto"] for m in ingresos)
+        total_penalidades = sum(m["monto"] for m in penalidades)
+
+        print(f"\n  [Histórico BD - todos los periodos]")
+        print(f"   Ingresos por reservas:    {len(ingresos)} confirmadas  →  S/.{total_ingresos:.2f}")
+        print(f"   Penalidades cobradas:     {len(penalidades)} cancelaciones  →  S/.{total_penalidades:.2f}")
+        print(f"   Reservas caidas/timeout:  {len(timeouts)}")
+        print(f"   ─────────────────────────────────────────")
+        print(f"   TOTAL INGRESOS REALES:    S/.{total_ingresos + total_penalidades:.2f}")
+
+        if movimientos:
+            print(f"\n  [Últimos 5 movimientos]")
+            for m in movimientos[:5]:
+                fecha = str(m.get("fecha", ""))[:16]
+                print(f"   {fecha}  {m['tipo']:<12}  S/.{m['monto']:>10.2f}  {m.get('descripcion','')[:40]}")
 
     def _listar_recursos(self) -> None:
         """Lista todos los recursos disponibles."""
@@ -453,3 +548,4 @@ class MenuConsola:
             info = self._base_datos.obtener_informacion_conexion()
             for clave, valor in info.items():
                 print(f"   {clave}: {valor}")
+

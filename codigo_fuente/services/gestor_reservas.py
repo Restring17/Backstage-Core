@@ -4,11 +4,14 @@ Empresa: Backstage-Core
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from models.reserva import ReservaEscenario, EstadoReserva
 from models.recurso import Recurso
 from models.ambiente import Ambiente
 from services.tarificador import Tarificador
+
+if TYPE_CHECKING:
+    from database.db_abstracta import BaseDatos
 
 
 class GestorReservas:
@@ -17,14 +20,9 @@ class GestorReservas:
     Maneja validaciones, confirmaciones y rollbacks.
     """
 
-    def __init__(self, tarificador: Optional[Tarificador] = None):
-        """
-        Inicializa el gestor de reservas.
-
-        Args:
-            tarificador: Instancia de Tarificador (se crea uno por defecto si no se proporciona)
-        """
+    def __init__(self, tarificador: Optional[Tarificador] = None, base_datos=None):
         self._tarificador = tarificador or Tarificador()
+        self._base_datos = base_datos  # referencia opcional a la BD para persistencia
         self._reservas_activas: dict[str, ReservaEscenario] = {}
         self._reservas_historial: List[ReservaEscenario] = []
         self._contador_reservas = 0
@@ -152,8 +150,7 @@ class GestorReservas:
     # ===== MÉTODOS DE CONFIRMACIÓN =====
     def confirmar_pago_reserva(self, id_reserva: str, monto_pagado: float) -> bool:
         """
-        Confirma el pago de una reserva (resuelve el bloqueo de 3 minutos).
-        This is the critical transactional point.
+        Confirma el pago de una reserva pendiente.
 
         Args:
             id_reserva: ID de la reserva
@@ -199,31 +196,54 @@ class GestorReservas:
 
         reserva = self._reservas_activas[id_reserva]
 
-        # 1. Si la reserva estaba confirmada, aplicamos la regla de negocio de penalidades
+        # 1. Penalidad si la reserva ya estaba confirmada
         if reserva.estado == EstadoReserva.CONFIRMADA:
-            # Calculamos los días faltantes
             dias_faltantes = (reserva.hora_inicio.date() - datetime.now().date()).days
-            
-            # El tarificador hace el cálculo financiero
             monto_penalidad, porcentaje = self._tarificador.calcular_penalidad(
                 reserva.monto_total_con_igv, dias_faltantes
             )
-            
-            # Imprimimos la factura de penalidad en consola
             factura_penalidad = self._tarificador.generar_factura_penalidad(
                 id_reserva, reserva.nombre_banda, monto_penalidad, porcentaje
             )
             print(factura_penalidad)
-            
             mensaje = f"✅ Reserva cancelada. Penalidad aplicada: {porcentaje*100}% (S/. {monto_penalidad:.2f}). Razón: {razon}"
+
+            # persiste penalidad y estado en BD
+            if self._base_datos:
+                self._base_datos.actualizar_reserva(id_reserva, {
+                    "estado":                EstadoReserva.CANCELADA.value,
+                    "monto_penalidad":       monto_penalidad,
+                    "porcentaje_penalidad":  porcentaje,
+                    "razon_cancelacion":     razon,
+                    "fecha_cancelacion":     datetime.now().isoformat(),
+                })
+                self._base_datos.registrar_movimiento_caja({
+                    "id_reserva":  id_reserva,
+                    "tipo":        "PENALIDAD",
+                    "monto":       monto_penalidad,
+                    "descripcion": f"Penalidad {porcentaje*100}% - {reserva.nombre_banda} - {razon}",
+                })
         else:
             mensaje = f"✅ Reserva pendiente cancelada sin penalidades. Razón: {razon}"
+            if self._base_datos:
+                self._base_datos.actualizar_reserva(id_reserva, {
+                    "estado":            EstadoReserva.CANCELADA.value,
+                    "razon_cancelacion": razon,
+                    "fecha_cancelacion": datetime.now().isoformat(),
+                })
+                # auditória de reservas caídas sin pago (monto 0)
+                self._base_datos.registrar_movimiento_caja({
+                    "id_reserva":  id_reserva,
+                    "tipo":        "TIMEOUT",
+                    "monto":       0,
+                    "descripcion": f"Reserva cancelada sin pago - {reserva.nombre_banda} - {razon}",
+                })
 
-        # 2. Se ejecuta el rollback en los recursos (liberación de fechas)
+        # 2. Rollback en los recursos (libera fechas)
         if not reserva.cancelar_reserva():
             return False, "Error al ejecutar el rollback en los recursos."
 
-        # 3. Mueve la reserva al historial general
+        # 3. Mueve al historial
         del self._reservas_activas[id_reserva]
         self._reservas_historial.append(reserva)
 

@@ -12,6 +12,15 @@ import os
 # Añade la carpeta actual al path de Python para importaciones relativas
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Cargar variables de entorno desde el archivo .env principal
+try:
+    from dotenv import load_dotenv
+    # Busca el archivo .env en la raíz del proyecto
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    load_dotenv(env_path)
+except ImportError:
+    print("⚠️ python-dotenv no está instalado. Ejecuta: pip install python-dotenv")
+
 from views.menu_consola import MenuConsola
 
 

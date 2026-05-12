@@ -1,0 +1,92 @@
+Proceso 2:
+( INICIO )
+                     │
+                     ▼
+         [ Ingresar ID de la Reserva ]
+                     │
+                     ▼
+           < ¿Ha pasado el Timeout > ────(SÍ)────┐
+           <     de 3 minutos?     >             │
+                     │                           ▼
+                   (NO)             [ ROLLBACK: Liberar recursos y ]
+                     │              [ cambiar estado a CANCELADA   ]
+                     ▼                           │
+        [ Ingresar Monto Pagado por ]            │
+        [         el Cliente        ]            │
+                     │                           │
+                     ▼                           │
+           < ¿El monto coincide con > ───(NO)────┤
+           <   el total a pagar?    >            │
+                     │                           ▼
+                   (SÍ)                 [ Mostrar Error de Monto ]
+                     │                  [      Incorrecto        ]
+                     ▼                           │
+       [ Cambiar estado a CONFIRMADA ]           │
+       [   y asentar bloqueo en BD   ]           │
+                     │                           │
+                     ▼                           │
+    [ Generar Factura y Hoja de Trabajo ]        │
+                     │                           │
+                     ▼                           │
+                  ( FIN ) ◄──────────────────────┘
+
+Proceso 3:
+( INICIO )
+                     │
+                     ▼
+      [ Ingresar ID de Reserva y Motivo ]
+      [         de Cancelación          ]
+                     │
+                     ▼
+           < ¿La reserva existe > ──────(NO)─────┐
+           <   y está activa?   >                │
+                     │                           ▼
+                   (SÍ)               [ Mostrar Error: Reserva ]
+                     │                [     No Encontrada      ]
+                     ▼                           │
+        [ Liberar bloque horario del ]           │
+        [   Ambiente (Escenario)     ]           │
+                     │                           │
+                     ▼                           │
+        [ Iterar sobre cada Recurso y ]          │
+        [   liberar sus horarios      ]          │
+                     │                           │
+                     ▼                           │
+        [ Actualizar estado a CANCELADA ]        │
+        [    y guardar en Historial     ]        │
+                     │                           │
+                     ▼                           │
+                  ( FIN ) ◄──────────────────────┘
+
+Proceso 4
+( INICIO )
+                     │
+                     ▼
+    [ Solicitar generación de Reporte ]
+    [     (Ocupación o Ingresos)      ]
+                     │
+                     ▼
+    [ Filtrar en Base de Datos solo las ]
+    [   reservas en estado CONFIRMADA   ]
+                     │
+                     ▼
+          < ¿Existen reservas > ────────(NO)─────┐
+          <    registradas?   >                  │
+                     │                           ▼
+                   (SÍ)              [ Mostrar Mensaje: Sin Datos ]
+                     │               [   suficientes para medir   ]
+                     ▼                           │
+      [ Calcular Subtotales, Promedios ]         │
+      [      e IGV (18%) Acumulado     ]         │
+                     │                           │
+                     ▼                           │
+      [ Formatear resultados y armar   ]         │
+      [        cuadro estadístico      ]         │
+                     │                           │
+                     ▼                           │
+      [ Mostrar Reporte Analítico en   ]         │
+      [           Pantalla             ]         │
+                     │                           │
+                     ▼                           │
+                  ( FIN ) ◄──────────────────────┘
+

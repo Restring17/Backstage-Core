@@ -20,19 +20,13 @@ class EstadoReserva(Enum):
 
 class ReservaEscenario:
     """
-    Clase transaccional que orquesta una reserva de escenario con recursos.
-    Implementa bloqueos de 3 minutos y buffer de 30 minutos.
-    Empresa: Backstage-Core
+    Reserva de escenario con todos sus recursos asociados.
+    Maneja el ciclo de vida: pendiente → confirmada → completada / cancelada.
     """
 
-    # Bloqueo de transacción: 3 minutos
-    TIMEOUT_PAGO_HORAS = 24
-
-    # Buffer operativo: 30 minutos post-evento para limpieza/desarme
-    BUFFER_OPERATIVO_MINUTOS = 30
-
-    # IGV Perú: 18%
-    TASA_IGV = 0.18
+    TIMEOUT_PAGO_HORAS = 24          # el cliente tiene 24h para pagar antes del rollback
+    BUFFER_OPERATIVO_MINUTOS = 30     # tiempo de limpieza/desarme post-evento
+    TASA_IGV = 0.18                   # IGV Perú
 
     def __init__(
         self,
@@ -132,11 +126,11 @@ class ReservaEscenario:
 
     @property
     def tiempo_bloqueado(self) -> int:
-        """Minutos que faltan para que expire el bloqueo de pago"""
+        """Horas que faltan para que expire el bloqueo de pago"""
         if self._estado != EstadoReserva.PENDIENTE_PAGO:
             return 0
-        elapsed = (datetime.now() - self._timestamp_creacion).total_seconds() / 60
-        remaining = self.TIMEOUT_PAGO_MINUTOS - elapsed
+        elapsed_hours = (datetime.now() - self._timestamp_creacion).total_seconds() / 3600
+        remaining = self.TIMEOUT_PAGO_HORAS - elapsed_hours
         return max(0, int(remaining))
 
     # ===== MÉTODOS DE VALIDACIÓN =====
@@ -234,7 +228,7 @@ class ReservaEscenario:
 
         elapsed_hours = (datetime.now() - self._timestamp_creacion).total_seconds() / 3600
         if elapsed_hours > self.TIMEOUT_PAGO_HORAS:
-            print(f"⏰ Timeout: Reserva {self._id_reserva} expirada tras 24 horas. Rollback automático.")
+            print(f"⏰ Timeout: Reserva {self._id_reserva} expirada tras {self.TIMEOUT_PAGO_HORAS} horas. Rollback automático.")
             self.cancelar_reserva()
             return True
 

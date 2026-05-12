@@ -1,347 +1,205 @@
-# 🏗️ ARQUITECTURA DEL SISTEMA - EventResourceManager
+# Arquitectura — Backstage-Core
 
-## Diagrama de Clases UML
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   📊 CAPA DE MODELOS (models/)              │
-└─────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│                  🎁 Recurso (Abstracta)                      │
-│                                                              │
-│  - id_recurso: str                                           │
-│  - nombre: str                                               │
-│  - precio_base_hora: float                                   │
-│  - estado: EstadoDisponibilidad                              │
-│  - _bloques_horarios_ocupados: List                          │
-│                                                              │
-│  + marcar_en_uso(hora_inicio, hora_fin)                     │
-│  + verificar_disponibilidad(hora_inicio, hora_fin): bool    │
-│  + enviar_a_mantenimiento()                                  │
-│  + preparar_recurso(): dict (ABSTRACTO)                     │
-│  + obtener_tipo_recurso(): str (ABSTRACTO)                  │
-└──────────────────────────────────────────────────────────────┘
-         △                                      △
-         │ hereda                               │ hereda
-         │                                      │
-    ┌─────────────────────┐          ┌─────────────────────┐
-    │  EquipoFisico       │          │ PersonalTecnico     │
-    │                     │          │                     │
-    │ - categoria: str    │          │ - especialidad: str │
-    │ - marca: str        │          │ - años_experiencia  │
-    │ - peso_kg: float    │          │ - activo: bool      │
-    │ - requiere_...      │          │ - horas_extras      │
-    │   electricidad      │          │                     │
-    │                     │          │ + asignar_turno()   │
-    └─────────────────────┘          └─────────────────────┘
-
-
-┌──────────────────────────────────────────────────────────────┐
-│                  🏛️  Ambiente                                 │
-│                                                              │
-│  - id_ambiente: str                                          │
-│  - nombre: str                                               │
-│  - capacidad_personas: int                                   │
-│  - precio_alquiler_hora: float                               │
-│  - estado: EstadoAmbiente                                    │
-│  - _bloques_ocupados: List                                   │
-│  - _equipos_asignados: List                                  │
-│  - _personal_asignado: List                                  │
-│                                                              │
-│  + verificar_disponibilidad(hora_ini, hora_fin): bool       │
-│  + bloquear_ambiente(hora_ini, hora_fin, id_res): bool      │
-│  + liberar_bloque(id_reserva): bool                          │
-│  + asignar_equipo(id_equipo)                                 │
-│  + asignar_personal(id_personal)                             │
-│  + generar_hoja_trabajo(): dict                              │
-└──────────────────────────────────────────────────────────────┘
-
-
-┌──────────────────────────────────────────────────────────────┐
-│              🎫 ReservaEscenario (TRANSACCIONAL)             │
-│                                                              │
-│  CONSTANTES:                                                 │
-│  - TIMEOUT_PAGO_MINUTOS = 3                                  │
-│  - BUFFER_OPERATIVO_MINUTOS = 30                             │
-│  - TASA_IGV = 0.18 (18%)                                     │
-│                                                              │
-│  ATRIBUTOS:                                                  │
-│  - id_reserva: str                                           │
-│  - ambiente: Ambiente                                        │
-│  - nombre_banda: str                                         │
-│  - hora_inicio: datetime                                     │
-│  - hora_fin: datetime                                        │
-│  - hora_liberacion_real: datetime                            │
-│  - _recursos_solicitados: List[Recurso]                     │
-│  - estado: EstadoReserva                                     │
-│  - monto_total_con_igv: float                                │
-│                                                              │
-│  MÉTODOS CLAVE:                                              │
-│  + validar_reserva(): (bool, str)  ← VERIFICA disponibilidad│
-│  + confirmar_reserva(monto): bool  ← RESUELVE bloqueo 3 min │
-│  + cancelar_reserva(): bool        ← ROLLBACK automático    │
-│  + calcular_presupuesto_total()    ← CALCULA costo + IGV    │
-│  + aplicar_timeout(): bool         ← EXPIRA tras 3 minutos  │
-│  + generar_hoja_trabajo(): dict    ← PARA técnicos          │
-└──────────────────────────────────────────────────────────────┘
-
-
-┌─────────────────────────────────────────────────────────────┐
-│             💼 CAPA DE SERVICIOS (services/)                │
-└─────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│              💰 Tarificador                                  │
-│                                                              │
-│  CONSTANTES:                                                 │
-│  - TASA_IGV = 0.18                                           │
-│  - BUFFER_MINUTOS = 30                                       │
-│  - RECARGO_EQUIPOS_DELICADOS = 0.15                          │
-│  - RECARGO_EXPERIENCIA = 0.10 per 5 años                     │
-│                                                              │
-│  + calcular_costo_recurso(recurso, duracion, recargos)      │
-│  + calcular_presupuesto_completo(...)                        │
-│  + validar_precio_recurso(recurso, precio): bool            │
-│  + generar_factura(id_res, cliente, desglose): str          │
-└──────────────────────────────────────────────────────────────┘
-
-
-┌──────────────────────────────────────────────────────────────┐
-│            🎮 GestorReservas                                 │
-│                                                              │
-│  ESTADO INTERNO:                                             │
-│  - _reservas_activas: dict                                   │
-│  - _reservas_historial: List                                 │
-│  - _tarificador: Tarificador                                │
-│                                                              │
-│  MÉTODOS TRANSACCIONALES:                                    │
-│  + crear_reserva(...): ReservaEscenario                     │
-│  + validar_reserva(id_res): (bool, str)                     │
-│  + confirmar_pago_reserva(id_res, monto): bool              │
-│  + cancelar_reserva(id_res, razon): bool                    │
-│                                                              │
-│  MÉTODOS DE CONSULTA:                                        │
-│  + obtener_reserva(id_res): ReservaEscenario                │
-│  + obtener_reservas_por_estado(estado): List                │
-│  + obtener_reservas_por_ambiente(id_amb): List              │
-│                                                              │
-│  MÉTODOS DE REPORTING:                                       │
-│  + generar_reporte_ocupacion_ambiente(id): dict             │
-│  + generar_reporte_ingresos(): dict                          │
-└──────────────────────────────────────────────────────────────┘
-
-
-┌─────────────────────────────────────────────────────────────┐
-│         🗄️  CAPA DE PERSISTENCIA (database/)                │
-│              (Patrón Repository)                             │
-└─────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│            🔗 BaseDatos (Abstracta)                          │
-│                                                              │
-│  + conectar(): bool         (ABSTRACTO)                      │
-│  + desconectar(): bool      (ABSTRACTO)                      │
-│  + esta_conectado(): bool   (ABSTRACTO)                      │
-│                                                              │
-│  CRUD para Recursos:                                         │
-│  + guardar_recurso(recurso): bool                            │
-│  + obtener_recurso(id): dict                                 │
-│  + obtener_todos_recursos(): List                            │
-│  + actualizar_recurso(id, datos): bool                       │
-│  + eliminar_recurso(id): bool                                │
-│                                                              │
-│  CRUD para Ambientes:                                        │
-│  + guardar_ambiente(ambiente): bool                          │
-│  + obtener_ambiente(id): dict                                │
-│  + ... (los otros CRUD)                                      │
-│                                                              │
-│  CRUD para Reservas:                                         │
-│  + guardar_reserva(reserva): bool                            │
-│  + obtener_reserva(id): dict                                 │
-│  + obtener_reservas_por_estado(estado): List                │
-│  + ... (los otros CRUD)                                      │
-│                                                              │
-│  TRANSACCIONES:                                              │
-│  + iniciar_transaccion(): bool                               │
-│  + confirmar_transaccion(): bool                             │
-│  + revertir_transaccion(): bool                              │
-│                                                              │
-│  UTILIDAD:                                                   │
-│  + limpiar_datos_test(): bool                                │
-│  + obtener_informacion_conexion(): dict                      │
-└──────────────────────────────────────────────────────────────┘
-         △                                      △
-         │ implementa                           │ implementa
-         │                                      │
-    ┌─────────────────────┐          ┌──────────────────────┐
-    │  DBSupabase         │          │  DBSQLite            │
-    │                     │          │                      │
-    │ (PostgreSQL Nube)   │          │ (SQLite Local/USB)   │
-    │                     │          │                      │
-    │ ✅ Escalable        │          │ ✅ Offline           │
-    │ ✅ Multi-usuario    │          │ ✅ Sin dependencias  │
-    │ ✅ Backup automático│          │ ✅ Portable          │
-    │ ❌ Requiere Internet│          │ ❌ Mono-usuario      │
-    │                     │          │                      │
-    └─────────────────────┘          └──────────────────────┘
-
-
-┌─────────────────────────────────────────────────────────────┐
-│          👁️  CAPA DE PRESENTACIÓN (views/)                  │
-└─────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│            🖥️  MenuConsola                                   │
-│                                                              │
-│  MENÚ INICIO:                                                │
-│  [1] 🌐 Nube (Supabase)                                     │
-│  [2] 💾 Local (SQLite)                                      │
-│                                                              │
-│  MENÚ PRINCIPAL:                                             │
-│  [1] 🎫 Crear Nueva Reserva                                 │
-│  [2] 🔍 Consultar Reserva                                   │
-│  [3] ✅ Confirmar Pago                                      │
-│  [4] ❌ Cancelar Reserva                                    │
-│  [5] 📊 Reporte Ocupación                                   │
-│  [6] 💰 Reporte Ingresos                                    │
-│  [7] 📦 Listar Recursos                                     │
-│  [8] 🏛️  Listar Ambientes                                   │
-│  [9] ℹ️  Info Conexión                                      │
-│  [0] 🚪 Salir                                               │
-│                                                              │
-│  MÉTODOS:                                                    │
-│  + seleccionar_entorno(): bool                              │
-│  + ejecutar()                                                │
-│  + mostrar_menu_principal()                                  │
-│  - _crear_reserva()                                          │
-│  - _confirmar_pago()                                         │
-│  - _reporte_ingresos()                                       │
-│  - ...                                                       │
-└──────────────────────────────────────────────────────────────┘
+## Capas del sistema
 
 ```
+views/menu_consola.py
+        │
+        ▼
+services/gestor_reservas.py  ←→  services/tarificador.py
+        │
+        ▼
+models/ (Recurso, Ambiente, ReservaEscenario)
+        │
+        ▼
+database/ (BaseDatos → DBSQLite | DBSupabase)
+```
+
+La vista no habla directamente con la BD. Todo pasa por los servicios.  
+Los modelos no saben nada de persistencia — solo contienen estado y reglas de negocio.
 
 ---
 
-## 🔄 Flujo Transaccional Completo
+## Modelos
+
+### Recurso (abstracta)
+
+Base para `EquipoFisico` y `PersonalTecnico`.
 
 ```
-CLIENTE SOLICITA RESERVA
-        ↓
-[MenuConsola] → [GestorReservas.crear_reserva()]
-        ↓
-[ReservaEscenario] creada con estado PENDIENTE_PAGO
-        ↓
-[Tarificador.calcular_presupuesto_completo()]
-  • Costo Ambiente × horas (con buffer 30 min)
-  • Costo Recursos × horas (con buffer 30 min)
-  • Aplica recargos por equipos/experiencia
-  • Suma IGV 18%
-        ↓
-Reserva.id = "RES-20260409-0001"
-Reserva.monto_total_con_igv = S/.1917.50
-⏱️ BLOQUEO DE 3 MINUTOS INICIA
-        ↓
-CLIENTE CONFIRMA PAGO
-        ↓
-[MenuConsola] → [GestorReservas.confirmar_pago_reserva()]
-        ↓
-¿Pasó el timeout de 3 min?
-├─ SÍ → [Rollback automático]
-│        Todos los recursos Se liberan
-│        Estado → CANCELADA
-│        ❌ Volver a intentar
+Recurso
+├── id_recurso, nombre, precio_base_hora, estado
+├── _bloques_horarios_ocupados: List
+├── marcar_en_uso(hora_inicio, hora_fin)
+├── verificar_disponibilidad(hora_inicio, hora_fin): bool
+├── enviar_a_mantenimiento()
+├── preparar_recurso(): dict         ← abstracto
+└── obtener_tipo_recurso(): str      ← abstracto
+
+EquipoFisico(Recurso)
+├── categoria, marca, peso_kg
+└── requiere_electricidad: bool
+
+PersonalTecnico(Recurso)
+├── especialidad, anos_experiencia
+└── activo: bool
+```
+
+### Ambiente
+
+Maneja los bloques horarios ocupados del escenario.
+
+```
+Ambiente
+├── id_ambiente, nombre, capacidad_personas
+├── precio_alquiler_hora, estado
+├── _bloques_ocupados: List
+├── verificar_disponibilidad(hora_ini, hora_fin): bool
+├── bloquear_ambiente(hora_ini, hora_fin, id_reserva): bool
+└── liberar_bloque(id_reserva): bool
+```
+
+### ReservaEscenario
+
+Clase central. Orquesta el ciclo de vida de una reserva.
+
+```
+ReservaEscenario
+├── TIMEOUT_PAGO_HORAS = 24         # 24h para pagar antes del rollback
+├── BUFFER_OPERATIVO_MINUTOS = 30   # tiempo de limpieza post-evento
+├── TASA_IGV = 0.18
 │
-└─ NO → ¿Monto es correcto?
-         ├─ NO → ❌ Error "Monto incorrecto"
-         │
-         └─ SÍ → ✅ Bloquea Ambiente
-                  ✅ Bloquea Recursos (marcar_en_uso)
-                  ✅ Asigna equipos al ambiente
-                  Estado → CONFIRMADA
-                  ✅ Guardar en BD
-                  ✅ Generar hoja de trabajo
-                  ✅ Mostrar factura
-                        ↓
-                  EVENTO LISTO PARA EJECUCIÓN
-                        ↓
-                  Hora INICIO: Escenario activo
-                  Hora FIN + 30 min BUFFER: Libera recursos
+├── id_reserva, ambiente, nombre_banda, manager_contacto
+├── hora_inicio, hora_fin, hora_liberacion_real
+├── estado: EstadoReserva (PENDIENTE_PAGO → CONFIRMADA → CANCELADA/COMPLETADA)
+├── monto_sin_igv, monto_igv, monto_total_con_igv
+│
+├── validar_reserva(): (bool, str)
+├── confirmar_reserva(monto): bool
+├── cancelar_reserva(): bool
+├── aplicar_timeout(): bool
+└── calcular_presupuesto_total()
 ```
 
 ---
 
-## Matrices de CRUD por Nivel
+## Servicios
 
-| Operación | Modelo | Service | DB |
-|-----------|--------|---------|-----|
-| Crear Recurso | ✅ `Recurso.__init__()` | ❌ | ✅ `DBSQLite.guardar_recurso()` |
-| Crear Reserva | ✅ `ReservaEscenario.__init__()` | ✅ `GestorReservas.crear_reserva()` | ✅ `DBSQLite.guardar_reserva()` |
-| Validar Disponibilidad | ✅ `ReservaEscenario.validar_reserva()` | ✅ `GestorReservas.validar_reserva()` | ❌ |
-| Calcular Presupuesto | ✅ `ReservaEscenario.calcular_presupuesto_total()` | ✅ `Tarificador.calcular_presupuesto_completo()` | ❌ |
-| Confirmar Pago | ✅ `ReservaEscenario.confirmar_reserva()` | ✅ `GestorReservas.confirmar_pago_reserva()` | ✅ `actualizar_reserva()` |
-| Cancelar | ✅ `ReservaEscenario.cancelar_reserva()` | ✅ `GestorReservas.cancelar_reserva()` | ✅ `actualizar_reserva()` |
-| Consultar | ✅ `obtener_*` properties | ✅ `obtener_reserva()` | ✅ `obtener_reserva()` |
-| Reportes | ❌ | ✅ Varios métodos | ✅ Consultas complejas |
+### Tarificador
 
----
+Solo matemáticas. No toca modelos ni BD.
 
-## Concepto de Patrón Repositorio
+- Calcula costo de cada recurso aplicando recargos (equipos delicados +15%, personal con experiencia +10% cada 5 años)
+- Aplica el buffer de 30 min sobre la duración
+- Genera facturas en texto formateado
+- Calcula penalidades por cancelación según días restantes
+
+### GestorReservas
+
+Orquesta operaciones. Recibe `tarificador` y `base_datos` por constructor.
 
 ```python
-# El código de negocio NO sabe detalles de BD
-
-# ❌ MALO: Acoplado a SQLite
-class GestorReservas:
-    def guardar_reserva(self, reserva):
-        conexion = sqlite3.connect("..db")  # Dependencia directa
-        
-# ✅ BUENO: Desacoplado (Patrón Repositorio)
-class GestorReservas:
-    def __init__(self, base_datos: BaseDatos):  # Inyección de dependencia
-        self._base_datos = base_datos
-        
-    def guardar_reserva(self, reserva):
-        self._base_datos.guardar_reserva(reserva_dict)  # Agnóstico
-        
-# Ahora puedo cambiar:
-# gestor = GestorReservas(DBSQLite())        # Modo local
-# gestor = GestorReservas(DBSupabase())      # Modo nube
-# Sin cambiar NADA en GestorReservas ✨
+GestorReservas(tarificador=Tarificador(), base_datos=DBSQLite())
 ```
 
----
-
-## Responsabilidades por Capa
-
-### 📊 Models (Lógica de Dominio)
-- Representa entidades del mundo real (Recurso, Ambiente, Reserva)
-- Valida reglas de negocio a nivel de objeto
-- NO conoce sobre BD o presentación
-
-### 💼 Services (Lógica Aplicativa)
-- Orquesta operaciones complejas
-- Ejecuta transacciones
-- Calcula valores derivados (presupuestos)
-- UI llama aquí
-
-### 🗄️ Database (Persistencia)
-- Capa de abstracción
-- Implementaciones concretas (SQLite, Supabase)
-- Services NO conocen detalles internos
-
-### 👁️ Views (Presentación)
-- Interfaz usuario
-- Recolecta inputs
-- Muestra outputs
-- Llama a Services
+Métodos principales:
+- `crear_reserva(...)` → crea la reserva en memoria y la guarda en BD
+- `confirmar_pago_reserva(id, monto)` → confirma y registra movimiento INGRESO en caja
+- `cancelar_reserva(id, razon)` → aplica penalidad si corresponde, actualiza BD, registra PENALIDAD o TIMEOUT en caja
+- `generar_reporte_ingresos()` → resumen en memoria
+- (el reporte completo histórico lo hace directamente `menu_consola` consultando `obtener_movimientos_caja()`)
 
 ---
 
-Esta arquitectura garantiza:
-✅ **Separación de responsabilidades**  
-✅ **Fácil de testear** (mocks posibles)  
-✅ **Escalable** (agregar nuevas BD sin cambiar lógica)  
-✅ **Mantenible** (cambios aislados)  
-✅ **Profesional** (sigue patrones reales de la industria)
+## Base de datos
+
+### Patrón Repositorio
+
+`GestorReservas` no sabe si habla con SQLite o Supabase. Solo conoce la interfaz:
+
+```python
+# para cambiar de BD, solo cambia aquí:
+self._base_datos = DBSQLite("backstage_core.db")   # local
+self._base_datos = DBSupabase()                     # nube
+# el resto del código no cambia
+```
+
+### BaseDatos (abstracta)
+
+Define el contrato que deben cumplir todas las implementaciones:
+- Conexión: `conectar()`, `desconectar()`, `esta_conectado()`
+- CRUD: recursos, ambientes, reservas
+- Transacciones: `iniciar_transaccion()`, `confirmar_transaccion()`, `revertir_transaccion()`
+- Caja: `registrar_movimiento_caja()`, `obtener_movimientos_caja()`
+
+### DBSQLite
+
+- Crea las tablas automáticamente al conectar
+- Transacciones reales con BEGIN/COMMIT/ROLLBACK de sqlite3
+- Archivo: `backstage_core.db` (se crea en `codigo_fuente/`)
+- `limpiar_datos_test()` funcional (útil en desarrollo)
+
+### DBSupabase
+
+- Usa `supabase-py` con credenciales del `.env`
+- `guardar_reserva()` usa RPC (`guardar_reserva_con_recursos`) para atomicidad real en PostgreSQL
+- `iniciar_transaccion()` / `revertir_transaccion()` son no-ops — Supabase SDK no expone BEGIN/ROLLBACK directamente; el rollback real está en la función RPC de PostgreSQL
+- `limpiar_datos_test()` deshabilitada en nube
+
+---
+
+## Tablas de BD
+
+### `reservas`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id_reserva | TEXT PK | formato RES-YYYYMMDD-NNNN |
+| id_ambiente | TEXT FK | |
+| nombre_banda, manager_contacto | TEXT | |
+| hora_inicio, hora_fin | TIMESTAMP | |
+| estado | TEXT | PENDIENTE_PAGO / CONFIRMADA / CANCELADA |
+| monto_sin_igv, monto_igv, monto_total | REAL | |
+| monto_penalidad, porcentaje_penalidad | REAL | se llenan al cancelar |
+| razon_cancelacion, fecha_cancelacion | TEXT/TS | solo en cancelaciones |
+
+### `reserva_recursos`
+Relación N:N entre reservas y recursos. Guarda el `precio_aplicado` en el momento de la reserva.
+
+### `movimientos_caja`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | SERIAL | autoincremental |
+| id_reserva | TEXT FK | nullable (ON DELETE SET NULL) |
+| tipo | TEXT | INGRESO / PENALIDAD / TIMEOUT |
+| monto | REAL | 0 para TIMEOUT (solo auditoría) |
+| descripcion | TEXT | |
+| fecha | TIMESTAMP | |
+
+---
+
+## Flujo de una reserva
+
+```
+[1] Usuario crea reserva
+    MenuConsola → GestorReservas.crear_reserva()
+    → ReservaEscenario creada, estado=PENDIENTE_PAGO
+    → GestorReservas llama base_datos.guardar_reserva() via RPC (Supabase) o INSERT (SQLite)
+
+[2] Usuario confirma pago
+    MenuConsola → GestorReservas.confirmar_pago_reserva()
+    → Verifica timeout (24h)
+    → Confirma en el modelo: bloquea ambiente + recursos
+    → base_datos.actualizar_reserva(estado=CONFIRMADA)
+    → base_datos.registrar_movimiento_caja(tipo=INGRESO, monto=total)
+
+[3a] Usuario cancela
+    MenuConsola → GestorReservas.cancelar_reserva()
+    → Si CONFIRMADA: calcula penalidad según días restantes
+    → Rollback en recursos (libera bloques horarios)
+    → base_datos.actualizar_reserva(estado=CANCELADA, penalidad=...)
+    → base_datos.registrar_movimiento_caja(tipo=PENALIDAD, monto=penalidad)
+
+[3b] Timeout (reserva pendiente cancelada)
+    → base_datos.actualizar_reserva(estado=CANCELADA)
+    → base_datos.registrar_movimiento_caja(tipo=TIMEOUT, monto=0)
+```

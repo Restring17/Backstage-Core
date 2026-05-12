@@ -202,3 +202,18 @@ class BaseDatos(ABC):
             Diccionario con datos de la conexión
         """
         pass
+
+    # ===== CAJA / AUDITORÍA FINANCIERA =====
+    @abstractmethod
+    def registrar_movimiento_caja(self, datos: Dict[str, Any]) -> bool:
+        """
+        Registra un movimiento financiero en movimientos_caja.
+        tipos: 'INGRESO' | 'PENALIDAD' | 'TIMEOUT'
+        campos: id_reserva, tipo, monto, descripcion
+        """
+        pass
+
+    @abstractmethod
+    def obtener_movimientos_caja(self) -> List[Dict[str, Any]]:
+        """Devuelve todo el histórico de movimientos de caja desde la BD."""
+        pass

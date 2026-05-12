@@ -4,7 +4,7 @@ Empresa: Backstage-Core
 """
 
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime
 from models.recurso import Recurso, EquipoFisico, PersonalTecnico
 
 
